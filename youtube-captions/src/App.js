@@ -1,39 +1,34 @@
-import {gql} from 'apollo-boost';
-import {ApolloProvider, Query} from 'react-apollo';
+import {ApolloProvider} from 'react-apollo';
 import OneGraphApolloClient from 'onegraph-apollo-client';
 import OneGraphAuth from 'onegraph-auth';
+import Captions from './Captions';
+import youtubeLogo from './youtubeLogo.svg';
 
 import React, {Component} from 'react';
-import logo from './logo.svg';
 import './App.css';
 
-const APP_ID = 'd822cdea-b8ca-4e71-9032-4eab6f38f042';
+const APP_ID = '80397fc4-412c-4c68-a103-5acc3d7a9287';
 
-const GET_VIDEO = gql`
-  query VideoWithCaptionsQuery($videoId: String!) {
-    youTube {
-      video(id: $videoId) {
-        id
-        snippet {
-          title
-        }
-        captions {
-          items {
-            snippet {
-              language
-              status
-            }
-            body
-          }
-        }
-      }
-    }
-  }
-`;
+const VIDEO_IDS = [
+  'UBGzsb2UkeY',
+  'u1E0CbGeICo',
+  'DNPVqK_woRQ',
+  'PHabPhgRUuU',
+  'U2NKoStGBvE',
+  'VYpJ9pfugM8',
+  't6CRZ-iG39g',
+];
+
+function randomVideoId() {
+  return VIDEO_IDS[Math.floor(Math.random() * VIDEO_IDS.length)];
+}
 
 class App extends Component {
   state = {
-    isLoggedIn: false,
+    checkingAuth: true,
+    isLoggedIn: null,
+    videoInput: '',
+    videoId: randomVideoId(),
   };
 
   constructor(props) {
@@ -45,55 +40,75 @@ class App extends Component {
       oneGraphAuth: this._oneGraphAuth,
     });
   }
-
   _authWithYoutube = async () => {
-    await this._oneGraphAuth.login('youtube');
-    const isLoggedIn = await this._oneGraphAuth.isLoggedIn('youtube');
-    this.setState({isLoggedIn: isLoggedIn});
+    this.setState({checkingAuth: true});
+    try {
+      await this._oneGraphAuth.login('youtube');
+      const isLoggedIn = await this._oneGraphAuth.isLoggedIn('youtube');
+      this.setState({isLoggedIn: isLoggedIn, checkingAuth: false});
+    } catch(e) {
+      this.setState({isLoggedIn: false, checkingAuth: false});
+    }
   };
-
   componentDidMount() {
-    this._oneGraphAuth
-      .isLoggedIn('youtube')
-      .then(isLoggedIn => this.setState({isLoggedIn}));
+    this._oneGraphAuth.isLoggedIn('youtube').then(isLoggedIn => {
+      this.setState({isLoggedIn, checkingAuth: false});
+    });
   }
-
+  _handleVideoInputChange = event => {
+    this.setState({videoInput: event.target.value});
+  };
+  _handleKeyPress = event => {
+    if (event.key === 'Enter') {
+      this.setState({videoId: this.state.videoInput});
+    }
+  };
+  _tryVideo = () => {
+    const videoId = randomVideoId();
+    this.setState({videoId, videoInput: videoId});
+  };
   render() {
-    return (
-      <div className="App">
-        <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo" />
-          <h1 className="App-title">YouTube Captions</h1>
-        </header>
-        <div className="App-intro">
-          {this.state.isLoggedIn ? (
-            <ApolloProvider client={this._oneGraphClient}>
-              <Query query={GET_VIDEO} variables={{videoId: 't6CRZ-iG39g'}}>
-                {({loading, error, data}) => {
-                  if (loading) return <div>Loading video...</div>;
-                  if (error)
-                    return (
-                      <div>Uh oh, something went wrong: {error.message}</div>
-                    );
-                  if (!data.youTube.video) {
-                    return <div>Could not find a video with that id.</div>;
-                  }
-                  const caption = data.youTube.video.captions.items.find(
-                    caption =>
-                      caption.snippet.status === 'serving' &&
-                      caption.snippet.language === 'en',
-                  );
-                  return <pre>{caption.body}</pre>;
-                }}
-              </Query>
-            </ApolloProvider>
-          ) : (
-            <button style={{fontSize: 18}} onClick={this._authWithYoutube}>
-              Login with YouTube
-            </button>
-          )}
+    if (this.state.checkingAuth) {
+      return null;
+    }
+    if (!this.state.isLoggedIn) {
+      return (
+        <div className="App">
+          <button
+            className="youtube-signin-button"
+            onClick={this._authWithYoutube}>
+            Login with YouTube
+            <img alt="youtube logo" src={youtubeLogo} />
+          </button>
         </div>
-      </div>
+      );
+    }
+    return (
+      <ApolloProvider client={this._oneGraphClient}>
+        <div className="App">
+          <div>
+            Enter a YouTube video id or{' '}
+            <span
+              style={{cursor: 'pointer', color: 'blue'}}
+              onClick={this._tryVideo}>
+              load a random video
+            </span>
+          </div>
+          <span>
+            <input
+              style={{fontSize: 14, margin: '8px 0', padding: 4}}
+              type="text"
+              placeholder="e.g. YX40hbAHx3s"
+              onChange={this._handleVideoInputChange}
+              onKeyPress={this._handleKeyPress}
+              value={this.state.videoInput}
+            />
+          </span>
+          {this.state.videoId ? (
+            <Captions videoId={this.state.videoId} />
+          ) : null}
+        </div>
+      </ApolloProvider>
     );
   }
 }
